@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Nov 17 11:49:32 2020
-
-@author: mehta
-"""
-
 #https://www.fool.com/knowledge-center/difference-between-ratings-shares.aspx
 
 
