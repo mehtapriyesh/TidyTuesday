@@ -1,0 +1,146 @@
+---
+title: "Australian Salaries"
+author: "Priyesh Mehta"
+date: "11/28/2020"
+output: html_document
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, ppi = 300, dpi=300,fig.width=14, fig.height = 7)
+```
+
+```{r}
+
+library(tidyverse)
+library(ggthemes)
+library(showtext)
+
+font_add("Calibri","calibri.ttf")
+font_add("Georgia", "Georgia.ttf")
+
+raw = read.csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2018/2018-04-23/week4_australian_salary.csv")
+
+head(raw)
+
+theme_set(theme_fivethirtyeight() + 
+    theme(
+      axis.text = element_text(family = "sans", size = 10, face = "bold"),
+      axis.title = element_text(family = "serif", size = 16, face = "bold.italic"), 
+      plot.title = element_text(family = "serif", face = "bold", hjust = 0.3, size = 20)))
+
+
+```
+
+#Things that can be looked into:
+
+* Checking for relation between % of women in STEM Fields and the salary disparity.
+* Occupations which pay highest amount even during even at an apprenticeship level.
+* Occupations that pay highest and their gender split.
+* Occupations with highest salary disparities
+
+We do not have a  clear idea about how the gender rank works. But we can try and check if my hunch about how it might actually work is correct.
+
+
+```{r}
+
+#I tried checking if percent of people categorized by gender in an occupation determines the gender rank, but that wasn't it. I will look up work of other people as it seems to be an important variable and it shouldn't be ignored.
+#I tried checking, but couldnt get decent references.
+
+# 
+# raw %>% 
+#   group_by(occupation) %>% 
+#   mutate(total = sum(individuals),
+#          percent = individuals/total) %>% 
+#   arrange(desc(percent))
+
+```
+
+##Processing the data to achieve the objectives stated in the beginning.
+
+```{r}
+
+colnames(raw)[6] = "income"
+raw$gender = ifelse(raw$gender == "Male","m","f")
+
+aus = raw %>% 
+  select(occupation:income) %>% 
+  pivot_wider(id_cols = occupation, names_from = gender, names_sep = "_", values_from = c(individuals, income)) %>% 
+  mutate(
+    across(everything(), ~replace_na(.x, 0)),
+    total = individuals_f + individuals_m,
+    percent_f = individuals_f/ total,
+    salary_diff = (income_f-income_m)/income_m,
+    avg = (income_f*percent_f + income_m*(1-percent_f)), #Weighted Average
+    max = pmax(income_m,income_f)
+    )
+
+head(aus)
+
+```
+
+
+```{r }
+
+aus %>%  filter(str_detect(occupation,"[scien|engi]"), between(percent_f, 0.01, 0.99)) %>% 
+  ggplot(aes(percent_f,salary_diff)) +
+  geom_point() +
+  scale_x_continuous(labels = scales::percent_format()) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(x = "% of women employed", y = "% of salary difference from men", title = "Relation between % of women employed in a STEM Field and % difference in Salary from Men")
+
+
+```
+# No clear relation visible. But since most of the datapoints are below 0%, it is clear that there exists clear disparity between salary paid to men and women.
+
+
+
+```{r}
+
+aus %>%  filter(str_detect(occupation,"Apprentice")) %>% 
+  mutate(occupation = fct_reorder(str_trim(str_to_title(str_replace_all(occupation, "(Apprentice|or|trainee|[:punct:])",""))), avg)) %>% 
+  slice_max(order_by = avg, n = 10) %>% 
+  ggplot(aes(occupation, avg, fill = occupation)) + 
+  geom_col(show.legend  = F) +
+  coord_flip() +
+  scale_y_continuous(labels = scales::dollar_format()) +
+  labs(y = "\n Average Salary", x = "Occupation\n", title = "Which Occupations pay highest salary at an Apprenticeship/Trainee level ?", subtitle = " Average calculated as an weighted average of salary to Men and Women.")
+  
+  
+```
+
+
+```{r}
+aus = aus %>%  mutate(occupation = str_to_title(occupation))
+
+aus %>% slice_max(order_by = avg, n = 10) %>% 
+  pivot_longer(values_to = "num", names_to = "Gender", cols = c(individuals_f,individuals_m)) %>%
+  mutate(Gender = ifelse(Gender == "individuals_f", "Female","Male"),
+         occupation = fct_reorder(occupation, total)) %>% 
+  ggplot(aes(occupation, num, fill = Gender)) +
+  geom_col() +
+  coord_flip() +
+  labs(x = "Occupation \n", y = "\n Number of People Employed", title = "Getting the Composition of Male and Female in Highest Paying Jobs")
+
+
+
+```
+
+```{r}
+
+aus %>% filter(between(percent_f,0.01,0.99)) %>%  
+  slice_max(abs(salary_diff),n = 10) %>% 
+  mutate(
+    occupation = fct_reorder(occupation, salary_diff),
+    positive = ifelse(salary_diff>0,T,F)
+  ) %>% 
+  ggplot(aes(occupation, salary_diff, fill = positive)) +
+  geom_col(show.legend = F) +
+  coord_flip() +
+  scale_y_continuous(labels = scales::percent_format(), breaks = seq(-1,2.5,0.5)) +
+  labs(x = "Occupation \n", y = "\n % Difference in Salary", title = "How much % less/more do Women make as compared to their Male Counterparts ?",
+       subtitle = "         This uses occupations with highest absolute percentage difference in salaries between both the genders.")
+
+
+```
+
